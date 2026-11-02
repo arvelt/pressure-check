@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pressure Check</title>
+<meta name="theme-color" content="#1565c0">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root{
+    --blue:#1565c0; --ink:#1a1a1a; --sub:#5f6368; --line:#dadce0;
+    --caution:#f9a825; --caution-bg:rgba(249,168,37,.20);
+    --alert:#c62828; --alert-bg:rgba(198,40,40,.16);
+    --ok:#2e7d32; --card:#f4f7fb;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; color:var(--ink); background:#fff}
+  header{display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; z-index:5}
+  header .title{font-weight:700; font-size:17px; color:var(--blue)}
+  header .loc{font-size:12px; color:var(--sub); margin-left:2px}
+  header .sp{flex:1}
+  button{font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 12px; font-size:14px}
+  button.primary{background:var(--blue); color:#fff; border-color:var(--blue)}
+  main{padding:14px; max-width:560px; margin:0 auto}
+  #staleBanner{display:none; background:#fff3e0; border:1px solid #ffb74d; color:#6d4c00; border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px}
+  #errBox{display:none; background:#fdecea; border:1px solid #ef9a9a; color:#7f1d1d; border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px}
+  .card{background:var(--card); border-radius:14px; padding:16px; margin-bottom:16px}
+  .level{font-size:40px; font-weight:800; line-height:1.1}
+  .level.ok{color:var(--ok)} .level.caution{color:var(--caution)} .level.alert{color:var(--alert)}
+  .nextwin{font-size:17px; margin-top:8px}
+  .meta{display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:14px; color:var(--ink)}
+  .meta .k{color:var(--sub); font-size:12px; display:block}
+  .meta .v{font-size:18px; font-weight:600}
+  h2{font-size:15px; margin:18px 0 8px}
+  .winlist{border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .winrow{display:flex; justify-content:space-between; padding:9px 12px; font-size:14px; border-top:1px solid var(--line)}
+  .winrow:first-child{border-top:none}
+  .tag{font-weight:700; padding:1px 8px; border-radius:99px; font-size:12px}
+  .tag.caution{background:var(--caution-bg); color:#8d6e00}
+  .tag.alert{background:var(--alert-bg); color:var(--alert)}
+  .none{font-size:14px; color:var(--sub); padding:9px 12px}
+  canvas{width:100%; display:block}
+  footer{padding:14px; text-align:center; color:var(--sub); font-size:12px; border-top:1px solid var(--line); margin-top:8px}
+  #setup{display:none; text-align:center; padding:40px 10px}
+  #setup p{color:var(--sub); font-size:14px; line-height:1.7}
+  dialog{border:none; border-radius:14px; padding:20px; max-width:92vw; width:340px}
+  dialog::backdrop{background:rgba(0,0,0,.4)}
+  dialog h3{margin:0 0 10px; font-size:16px}
+  dialog p{font-size:13px; color:var(--sub); line-height:1.7}
+  dialog .row{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap}
+  .loading{text-align:center; color:var(--sub); padding:30px 0; font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <span class="title">Pressure Check</span>
+  <span class="loc" id="locLabel"></span>
+  <span class="sp"></span>
+  <button id="refreshBtn" type="button">更新</button>
+  <button id="settingsBtn" type="button">設定</button>
+</header>
+<main>
+  <div id="staleBanner"></div>
+  <div id="errBox"></div>
+
+  <section id="setup">
+    <p>気圧の予報を表示するには、最初に現在地の取得が必要です。<br>
+    位置情報はこの端末の中にだけ保存され、外部に送信されることはありません（予報の取得先に座標が渡ります）。</p>
+    <button class="primary" id="setupGpsBtn" type="button" style="font-size:16px; padding:12px 22px">現在地を取得</button>
+    <p id="setupMsg"></p>
+  </section>
+
+  <section id="content" style="display:none">
+    <div class="card">
+      <div class="level ok" id="levelText">―</div>
+      <div class="nextwin" id="nextWinText"></div>
+      <div class="meta">
+        <div><span class="k">現在の気圧</span><span class="v" id="nowPressure">―</span></div>
+        <div><span class="k">直近3時間の変化</span><span class="v" id="trendText">―</span></div>
+        <div><span class="k">最終取得</span><span class="v" id="fetchedAt" style="font-size:14px">―</span></div>
+      </div>
+    </div>
+
+    <h2>注意時間帯</h2>
+    <div class="winlist" id="winList"><div class="none">読み込み中…</div></div>
+
+    <h2>今日の気圧</h2>
+    <canvas id="chartToday"></canvas>
+    <h2>明日の気圧</h2>
+    <canvas id="chartTomorrow"></canvas>
+  </section>
+
+  <div class="loading" id="loading">読み込み中…</div>
+</main>
+<footer>
+  データ出典： Open-Meteo（日本域は気象庁モデルが元データ）<br>
+  Pressure Check v1.0.0
+</footer>
+
+<dialog id="settingsDlg">
+  <h3>設定</h3>
+  <p>保存中の地点： <span id="savedLoc">未設定</span><br>
+  位置情報はこの端末のブラウザ内にのみ保存されます。</p>
+  <p>GPSの許可が拒否された場合は、ブラウザの設定で位置情報の許可を確認してください。屋内では測位がずれることがあります。</p>
+  <div class="row">
+    <button class="primary" id="reGpsBtn" type="button">現在地を取り直す</button>
+    <button id="closeDlgBtn" type="button">閉じる</button>
+  </div>
+  <p id="dlgMsg"></p>
+</dialog>
+
+<script>
+"use strict";
+var APP_VERSION = "1.0.0";
+var LS_LOC = "pc_loc_v1", LS_CACHE = "pc_cache_v1";
+
+// ==== LOGIC START ====
+// 判定ロジック（純粋関数：朝のアラートと同一基準）
+// 3時間で2〜4hPa低下=注意(1)、4hPa以上=警戒(2)、6時間で6hPa以上低下=警戒(2)
+function hourLevel(pressures, i){
+  var p = pressures[i];
+  if (p == null) return 0;
+  var d3 = null, d6 = null;
+  if (i + 3 < pressures.length && pressures[i + 3] != null) d3 = p - pressures[i + 3];
+  if (i + 6 < pressures.length && pressures[i + 6] != null) d6 = p - pressures[i + 6];
+  if ((d3 != null && d3 >= 4) || (d6 != null && d6 >= 6)) return 2;
+  if (d3 != null && d3 >= 2) return 1;
+  return 0;
+}
+function computeWindows(times, pressures){
+  var levels = [], i;
+  for (i = 0; i < times.length; i++) levels.push(hourLevel(pressures, i));
+  var windows = [];
+  i = 0;
+  while (i < times.length){
+    if (levels[i] === 0){ i++; continue; }
+    var start = i, lvl = 0, maxD3 = 0;
+    while (i < times.length && levels[i] > 0){
+      if (levels[i] > lvl) lvl = levels[i];
+      var d3 = (i + 3 < pressures.length && pressures[i] != null && pressures[i + 3] != null) ? pressures[i] - pressures[i + 3] : 0;
+      if (d3 > maxD3) maxD3 = d3;
+      i++;
+    }
+    windows.push({ startIdx: start, endIdx: i - 1, coverEndIdx: (i - 1) + 3,
+                   level: lvl, maxDrop3: Math.round(maxD3 * 10) / 10,
+                   date: times[start].slice(0, 10) });
+  }
+  return { levels: levels, windows: windows };
+}
+function hourLabel(t){ return parseInt(t.slice(11, 13), 10) + "時"; }
+function fmtHourRange(w, times){
+  var s = parseInt(times[w.startIdx].slice(11, 13), 10);
+  var e = parseInt(times[w.endIdx].slice(11, 13), 10) + 3;
+  function f(h){ return h >= 24 ? "翌" + (h - 24) + "時" : h + "時"; }
+  return f(s) + "〜" + f(e);
+}
+// ==== LOGIC END ====
+
+function $(id){ return document.getElementById(id); }
+function getLoc(){ try { return JSON.parse(localStorage.getItem(LS_LOC)); } catch(e){ return null; } }
+function setLoc(loc){ localStorage.setItem(LS_LOC, JSON.stringify(loc)); }
+
+function locNowInfo(utcOffsetSec){
+  var d = new Date(Date.now() + utcOffsetSec * 1000);
+  function p2(n){ return (n < 10 ? "0" : "") + n; }
+  return { date: d.getUTCFullYear() + "-" + p2(d.getUTCMonth() + 1) + "-" + p2(d.getUTCDate()),
+           hh: p2(d.getUTCHours()) };
+}
+
+function fetchForecast(loc){
+  var url = "https://api.open-meteo.com/v1/forecast?latitude=" + encodeURIComponent(loc.lat) +
+            "&longitude=" + encodeURIComponent(loc.lon) +
+            "&hourly=surface_pressure&timezone=auto&forecast_days=3";
+  return fetch(url).then(function(r){
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  });
+}
+
+function render(payload, fetchedAtMs, stale){
+  var times = payload.hourly.time, pressures = payload.hourly.surface_pressure;
+  var offset = payload.utc_offset_seconds || 0;
+  var now = locNowInfo(offset);
+  var nowKey = now.date + "T" + now.hh;
+  var nowIdx = -1, i;
+  for (i = 0; i < times.length; i++){ if (times[i].slice(0, 13) === nowKey){ nowIdx = i; break; } }
+  if (nowIdx < 0){ // 範囲外なら最も近いものを探す
+    for (i = 0; i < times.length; i++){ if (times[i].slice(0, 13) <= nowKey) nowIdx = i; }
+    if (nowIdx < 0) nowIdx = 0;
+  }
+  var dates = [];
+  for (i = 0; i < times.length; i++){ var dk = times[i].slice(0, 10); if (dates.indexOf(dk) < 0) dates.push(dk); }
+  var today = now.date, tomorrow = null;
+  var ti = dates.indexOf(today);
+  if (ti >= 0 && ti + 1 < dates.length) tomorrow = dates[ti + 1];
+  if (!tomorrow){ tomorrow = dates[dates.length - 1]; }
+
+  var res = computeWindows(times, pressures);
+  var windows = res.windows;
+
+  // 判定カード：今日の残り時間の最大レベル
+  var cardLevel = 0;
+  windows.forEach(function(w){
+    if (w.date === today && w.coverEndIdx >= nowIdx && w.level > cardLevel) cardLevel = w.level;
+  });
+  var lt = $("levelText");
+  lt.textContent = cardLevel === 2 ? "警戒" : (cardLevel === 1 ? "注意" : "安定");
+  lt.className = "level " + (cardLevel === 2 ? "alert" : (cardLevel === 1 ? "caution" : "ok"));
+
+  var next = null;
+  for (i = 0; i < windows.length; i++){ if (windows[i].coverEndIdx >= nowIdx){ next = windows[i]; break; } }
+  $("nextWinText").textContent = next
+    ? ("次の" + (next.level === 2 ? "警戒" : "注意") + "時間帯： " + (next.date === today ? "今日 " : "明日 ") + fmtHourRange(next, times))
+    : "今日・明日に注意時間帯はありません";
+
+  if (pressures[nowIdx] != null) $("nowPressure").textContent = (Math.round(pressures[nowIdx] * 10) / 10) + " hPa";
+  if (nowIdx - 3 >= 0 && pressures[nowIdx] != null && pressures[nowIdx - 3] != null){
+    var d = Math.round((pressures[nowIdx] - pressures[nowIdx - 3]) * 10) / 10;
+    $("trendText").textContent = (d <= -0.5 ? "↘ " : (d >= 0.5 ? "↗ " : "→ ")) + (d > 0 ? "+" : "") + d + " hPa";
+  } else { $("trendText").textContent = "―"; }
+  var fd = new Date(fetchedAtMs);
+  $("fetchedAt").textContent = (fd.getMonth() + 1) + "/" + fd.getDate() + " " + fd.getHours() + ":" + ("0" + fd.getMinutes()).slice(-2);
+
+  // 注意時間帯リスト（今日・明日、現在時刻以降にかかるもの）
+  var list = $("winList"); list.innerHTML = "";
+  var shown = 0;
+  windows.forEach(function(w){
+    if ((w.date === today || w.date === tomorrow) && w.coverEndIdx >= nowIdx){
+      var row = document.createElement("div"); row.className = "winrow";
+      var left = document.createElement("span");
+      left.textContent = (w.date === today ? "今日 " : "明日 ") + fmtHourRange(w, times);
+      var right = document.createElement("span");
+      right.innerHTML = '<span class="tag ' + (w.level === 2 ? "alert" : "caution") + '">' + (w.level === 2 ? "警戒" : "注意") + "</span> 最大 " + w.maxDrop3 + " hPa低下";
+      row.appendChild(left); row.appendChild(right); list.appendChild(row); shown++;
+    }
+  });
+  if (!shown) list.innerHTML = '<div class="none">今日・明日に注意時間帯はありません</div>';
+
+  drawChart($("chartToday"), times, pressures, res.levels, today);
+  drawChart($("chartTomorrow"), times, pressures, res.levels, tomorrow);
+
+  var banner = $("staleBanner");
+  if (stale){
+    banner.style.display = "block";
+    banner.textContent = "取得に失敗しました。前回取得したデータを表示しています（最終取得： " + $("fetchedAt").textContent + "）。";
+  } else banner.style.display = "none";
+
+  $("content").style.display = "block";
+  $("setup").style.display = "none";
+  $("loading").style.display = "none";
+}
+
+function drawChart(canvas, times, pressures, levels, dateKey){
+  var idxs = [];
+  for (var i = 0; i < times.length; i++) if (times[i].slice(0, 10) === dateKey) idxs.push(i);
+  if (!idxs.length) return;
+  var W = canvas.clientWidth || canvas.parentElement.clientWidth || 320;
+  var H = 190, dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.height = H + "px";
+  var ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+  var padL = 34, padR = 8, padT = 10, padB = 26;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var vals = idxs.map(function(i){ return pressures[i]; }).filter(function(v){ return v != null; });
+  var mn = Math.floor(Math.min.apply(null, vals) - 1.5), mx = Math.ceil(Math.max.apply(null, vals) + 1.5);
+  function X(h){ return padL + iw * (h / 23); }
+  function Y(v){ return padT + ih * (1 - (v - mn) / (mx - mn)); }
+  // 注意帯
+  idxs.forEach(function(i){
+    var h = parseInt(times[i].slice(11, 13), 10);
+    if (levels[i] > 0){
+      ctx.fillStyle = levels[i] === 2 ? "rgba(198,40,40,.14)" : "rgba(249,168,37,.20)";
+      ctx.fillRect(X(h), padT, iw / 23, ih);
+    }
+  });
+  // 横軸グリッドと気圧ラベル
+  ctx.strokeStyle = "#e0e0e0"; ctx.fillStyle = "#5f6368"; ctx.font = "11px sans-serif"; ctx.lineWidth = 1;
+  [mx, Math.round((mx + mn) / 2), mn].forEach(function(v){
+    ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(W - padR, Y(v)); ctx.stroke();
+    ctx.fillText(v + "", 2, Y(v) + 4);
+  });
+  // 折れ線
+  ctx.strokeStyle = "#1565c0"; ctx.lineWidth = 2; ctx.beginPath();
+  var started = false;
+  idxs.forEach(function(i){
+    var h = parseInt(times[i].slice(11, 13), 10), v = pressures[i];
+    if (v == null) return;
+    if (!started){ ctx.moveTo(X(h), Y(v)); started = true; } else ctx.lineTo(X(h), Y(v));
+  });
+  ctx.stroke();
+  // 時間ラベル（0/6/12/18/23のみ、大きく太く）
+  ctx.fillStyle = "#1a1a1a"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
+  [0, 6, 12, 18, 23].forEach(function(h){ ctx.fillText(h + "", X(h), H - 6); });
+  ctx.textAlign = "left";
+}
+
+function showError(msg){
+  var e = $("errBox"); e.style.display = "block"; e.textContent = msg;
+  $("loading").style.display = "none";
+}
+function clearError(){ $("errBox").style.display = "none"; }
+
+function load(){
+  var loc = getLoc();
+  clearError();
+  if (!loc){
+    $("setup").style.display = "block";
+    $("content").style.display = "none";
+    $("loading").style.display = "none";
+    $("locLabel").textContent = "";
+    return;
+  }
+  $("locLabel").textContent = "(" + loc.lat.toFixed(2) + ", " + loc.lon.toFixed(2) + ")";
+  $("savedLoc").textContent = "緯度 " + loc.lat.toFixed(2) + " / 経度 " + loc.lon.toFixed(2);
+  $("loading").style.display = "block";
+  fetchForecast(loc).then(function(payload){
+    var nowMs = Date.now();
+    try { localStorage.setItem(LS_CACHE, JSON.stringify({ fetchedAt: nowMs, payload: payload })); } catch(e){}
+    render(payload, nowMs, false);
+  }).catch(function(){
+    var cache = null;
+    try { cache = JSON.parse(localStorage.getItem(LS_CACHE)); } catch(e){}
+    if (cache && cache.payload){
+      render(cache.payload, cache.fetchedAt, true);
+    } else {
+      showError("気圧データを取得できませんでした。通信状態を確認して「更新」を押してください。");
+    }
+  });
+}
+
+function acquireGps(msgEl){
+  if (!navigator.geolocation){ msgEl.textContent = "このブラウザでは位置情報が使えません。"; return; }
+  msgEl.textContent = "取得中…";
+  navigator.geolocation.getCurrentPosition(function(pos){
+    setLoc({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+    msgEl.textContent = "";
+    try { $("settingsDlg").close(); } catch(e){}
+    load();
+  }, function(err){
+    msgEl.textContent = "位置情報を取得できませんでした。ブラウザの設定で位置情報の許可を確認してください。";
+  }, { timeout: 15000, maximumAge: 600000 });
+}
+
+$("setupGpsBtn").addEventListener("click", function(){ acquireGps($("setupMsg")); });
+$("reGpsBtn").addEventListener("click", function(){ acquireGps($("dlgMsg")); });
+$("refreshBtn").addEventListener("click", load);
+$("settingsBtn").addEventListener("click", function(){
+  var loc = getLoc();
+  $("savedLoc").textContent = loc ? ("緯度 " + loc.lat.toFixed(2) + " / 経度 " + loc.lon.toFixed(2)) : "未設定";
+  $("settingsDlg").showModal();
+});
+$("closeDlgBtn").addEventListener("click", function(){ $("settingsDlg").close(); });
+window.addEventListener("resize", function(){
+  var cache = null; try { cache = JSON.parse(localStorage.getItem(LS_CACHE)); } catch(e){}
+  if (cache && cache.payload && $("content").style.display !== "none" && getLoc()) render(cache.payload, cache.fetchedAt, false);
+});
+
+if ("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(function(){});
+}
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{"background_color":"#ffffff","description":"気圧の低下（注意・警戒時間帯）を知らせる天気痛向けPWA","display":"standalone","icons":[{"purpose":"any","sizes":"192x192","src":"icon-192.png","type":"image/png"},{"purpose":"any","sizes":"512x512","src":"icon-512.png","type":"image/png"}],"lang":"ja","name":"Pressure Check","scope":"./","short_name":"Pressure","start_url":"./","theme_color":"#1565c0"}
