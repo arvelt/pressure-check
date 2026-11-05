@@ -95,7 +95,7 @@
 </main>
 <footer>
   データ出典： Open-Meteo（日本域は気象庁モデルが元データ）<br>
-  Pressure Check v1.0.0
+  Pressure Check v1.1.0
 </footer>
 
 <dialog id="settingsDlg">
@@ -112,7 +112,7 @@
 
 <script>
 "use strict";
-var APP_VERSION = "1.0.0";
+var APP_VERSION = "1.1.0";
 var LS_LOC = "pc_loc_v1", LS_CACHE = "pc_cache_v1";
 
 // ==== LOGIC START ====
@@ -165,7 +165,7 @@ function locNowInfo(utcOffsetSec){
   var d = new Date(Date.now() + utcOffsetSec * 1000);
   function p2(n){ return (n < 10 ? "0" : "") + n; }
   return { date: d.getUTCFullYear() + "-" + p2(d.getUTCMonth() + 1) + "-" + p2(d.getUTCDate()),
-           hh: p2(d.getUTCHours()) };
+           hh: p2(d.getUTCHours()), mm: p2(d.getUTCMinutes()) };
 }
 
 function fetchForecast(loc){
@@ -237,8 +237,9 @@ function render(payload, fetchedAtMs, stale){
   });
   if (!shown) list.innerHTML = '<div class="none">今日・明日に注意時間帯はありません</div>';
 
-  drawChart($("chartToday"), times, pressures, res.levels, today);
-  drawChart($("chartTomorrow"), times, pressures, res.levels, tomorrow);
+  var nowFrac = parseInt(now.hh, 10) + (parseInt(now.mm, 10) / 60);
+  drawChart($("chartToday"), times, pressures, res.levels, today, nowFrac);
+  drawChart($("chartTomorrow"), times, pressures, res.levels, tomorrow, null);
 
   var banner = $("staleBanner");
   if (stale){
@@ -251,7 +252,7 @@ function render(payload, fetchedAtMs, stale){
   $("loading").style.display = "none";
 }
 
-function drawChart(canvas, times, pressures, levels, dateKey){
+function drawChart(canvas, times, pressures, levels, dateKey, nowFrac){
   var idxs = [];
   for (var i = 0; i < times.length; i++) if (times[i].slice(0, 10) === dateKey) idxs.push(i);
   if (!idxs.length) return;
@@ -288,6 +289,18 @@ function drawChart(canvas, times, pressures, levels, dateKey){
     if (!started){ ctx.moveTo(X(h), Y(v)); started = true; } else ctx.lineTo(X(h), Y(v));
   });
   ctx.stroke();
+  // 現在時刻の縦ライン（今日のグラフのみ。頭痛ーる式）
+  if (nowFrac != null && nowFrac >= 0 && nowFrac <= 23){
+    var nx = X(nowFrac);
+    ctx.strokeStyle = "#c62828"; ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(nx, padT); ctx.lineTo(nx, padT + ih); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#c62828"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+    var lx = Math.max(padL + 16, Math.min(W - padR - 16, nx));
+    ctx.fillText("現在", lx, padT + 12);
+    ctx.textAlign = "left";
+  }
   // 時間ラベル（0/6/12/18/23のみ、大きく太く）
   ctx.fillStyle = "#1a1a1a"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
   [0, 6, 12, 18, 23].forEach(function(h){ ctx.fillText(h + "", X(h), H - 6); });
