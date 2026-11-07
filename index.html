@@ -95,7 +95,7 @@
 </main>
 <footer>
   データ出典： Open-Meteo（日本域は気象庁モデルが元データ）<br>
-  Pressure Check v1.1.0
+  Pressure Check v1.1.1
 </footer>
 
 <dialog id="settingsDlg">
@@ -112,7 +112,7 @@
 
 <script>
 "use strict";
-var APP_VERSION = "1.1.0";
+var APP_VERSION = "1.1.1";
 var LS_LOC = "pc_loc_v1", LS_CACHE = "pc_cache_v1";
 
 // ==== LOGIC START ====
@@ -238,8 +238,16 @@ function render(payload, fetchedAtMs, stale){
   if (!shown) list.innerHTML = '<div class="none">今日・明日に注意時間帯はありません</div>';
 
   var nowFrac = parseInt(now.hh, 10) + (parseInt(now.mm, 10) / 60);
-  drawChart($("chartToday"), times, pressures, res.levels, today, nowFrac);
-  drawChart($("chartTomorrow"), times, pressures, res.levels, tomorrow, null);
+  // 縦軸は今日・明日の両日を通した共通レンジにする（日ごとに変えると比較できないため）
+  var sharedVals = [];
+  for (i = 0; i < times.length; i++){
+    var sday = times[i].slice(0, 10);
+    if ((sday === today || sday === tomorrow) && pressures[i] != null) sharedVals.push(pressures[i]);
+  }
+  var sharedMn = Math.floor(Math.min.apply(null, sharedVals) - 1.5);
+  var sharedMx = Math.ceil(Math.max.apply(null, sharedVals) + 1.5);
+  drawChart($("chartToday"), times, pressures, res.levels, today, nowFrac, sharedMn, sharedMx);
+  drawChart($("chartTomorrow"), times, pressures, res.levels, tomorrow, null, sharedMn, sharedMx);
 
   var banner = $("staleBanner");
   if (stale){
@@ -252,7 +260,7 @@ function render(payload, fetchedAtMs, stale){
   $("loading").style.display = "none";
 }
 
-function drawChart(canvas, times, pressures, levels, dateKey, nowFrac){
+function drawChart(canvas, times, pressures, levels, dateKey, nowFrac, yMin, yMax){
   var idxs = [];
   for (var i = 0; i < times.length; i++) if (times[i].slice(0, 10) === dateKey) idxs.push(i);
   if (!idxs.length) return;
@@ -263,7 +271,9 @@ function drawChart(canvas, times, pressures, levels, dateKey, nowFrac){
   var padL = 34, padR = 8, padT = 10, padB = 26;
   var iw = W - padL - padR, ih = H - padT - padB;
   var vals = idxs.map(function(i){ return pressures[i]; }).filter(function(v){ return v != null; });
-  var mn = Math.floor(Math.min.apply(null, vals) - 1.5), mx = Math.ceil(Math.max.apply(null, vals) + 1.5);
+  var mn, mx;
+  if (typeof yMin === "number" && typeof yMax === "number"){ mn = yMin; mx = yMax; }
+  else { mn = Math.floor(Math.min.apply(null, vals) - 1.5); mx = Math.ceil(Math.max.apply(null, vals) + 1.5); }
   function X(h){ return padL + iw * (h / 23); }
   function Y(v){ return padT + ih * (1 - (v - mn) / (mx - mn)); }
   // 注意帯
